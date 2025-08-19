@@ -1,9 +1,11 @@
-fastapi
-uvicorn[standard]
+Flask
+Flask-SocketIO
+gunicorn
+eventlet
 python-dotenv
 SQLAlchemy
-python-multipart
-jinja2
 requests
+jinja2
+python-multipart
 aiofiles
 pydantic-settings

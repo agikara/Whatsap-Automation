@@ -1,73 +1,96 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
-from typing import List
-
-from .. import crud, schemas, models
-from ..database import get_db
-from ..security import verify_credentials
+from flask import Blueprint, request, jsonify, render_template, abort
+from ..database import SessionLocal
+from .. import crud, schemas
+from ..auth import auth_required
 from ..whatsapp_client import whatsapp_client
+from ..extensions import socketio
 
-router = APIRouter(
-    prefix="/dashboard",
-    tags=["dashboard"],
-    dependencies=[Depends(verify_credentials)]
-)
+bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
 
-templates = Jinja2Templates(directory="app/templates")
-
-@router.get("/", response_class=HTMLResponse)
-async def read_dashboard(request: Request):
+@bp.route('/', methods=['GET'])
+@auth_required
+def read_dashboard():
     """
     Serves the main dashboard HTML page.
     """
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return render_template("dashboard.html")
 
-@router.get("/users", response_model=List[schemas.UserSummary])
-def get_all_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+@bp.route('/users', methods=['GET'])
+@auth_required
+def get_all_users():
     """
     Retrieve all users.
     """
-    users = crud.get_users(db, skip=skip, limit=limit)
-    return users
+    db = SessionLocal()
+    try:
+        users = crud.get_users(db, skip=0, limit=100)
+        # Manually serialize to dicts to avoid circular reference issues with jsonify
+        users_data = [{"id": u.id, "whatsapp_id": u.whatsapp_id} for u in users]
+        return jsonify(users_data)
+    finally:
+        db.close()
 
-@router.get("/users/{user_id}/messages", response_model=List[schemas.Message])
-def get_user_messages(user_id: int, db: Session = Depends(get_db)):
+@bp.route('/users/<int:user_id>/messages', methods=['GET'])
+@auth_required
+def get_user_messages(user_id: int):
     """
     Retrieve all messages for a specific user.
     """
-    messages = crud.get_messages_by_user(db, user_id=user_id)
-    if not messages and not crud.get_user_by_whatsapp_id(db, str(user_id)): # A bit of a hack to check if user exists
-        # A better way would be a dedicated get_user_by_id crud function
-        raise HTTPException(status_code=404, detail="User not found")
-    return messages
+    db = SessionLocal()
+    try:
+        messages = crud.get_messages_by_user(db, user_id=user_id)
+        # Manually serialize
+        messages_data = [
+            {"id": m.id, "content": m.content, "direction": m.direction, "timestamp": m.timestamp.isoformat()}
+            for m in messages
+        ]
+        return jsonify(messages_data)
+    finally:
+        db.close()
 
-@router.post("/users/{user_id}/messages", response_model=schemas.Message)
-def send_manual_message(user_id: int, request: schemas.SendMessageRequest, db: Session = Depends(get_db)):
+@bp.route('/users/<int:user_id>/messages', methods=['POST'])
+@auth_required
+def send_manual_message(user_id: int):
     """
     Send a manual text message to a user from the dashboard.
     """
-    # This is inefficient, I should have a get_user_by_id function.
-    # I will add it later if I have time. For now, I'll have to iterate.
-    users = crud.get_users(db, limit=1000) # Assuming not more than 1000 users for now
-    target_user = next((u for u in users if u.id == user_id), None)
+    data = request.get_json()
+    if not data or 'text' not in data:
+        abort(400, description="Missing 'text' in request body")
 
-    if not target_user:
-        raise HTTPException(status_code=404, detail="User not found")
+    text = data['text']
+    db = SessionLocal()
+    try:
+        # This is still inefficient. A get_user_by_id would be better.
+        users = crud.get_users(db, limit=1000)
+        target_user = next((u for u in users if u.id == user_id), None)
 
-    # 1. Send message via WhatsApp API
-    response = whatsapp_client.send_text_message(to=target_user.whatsapp_id, text=request.text)
-    if not response:
-        raise HTTPException(status_code=500, detail="Failed to send message via WhatsApp API")
+        if not target_user:
+            abort(404, description="User not found")
 
-    # 2. Save the outgoing message to the database
-    message_to_save = schemas.MessageCreate(
-        content=request.text,
-        direction="outgoing",
-        message_type="text",
-        whatsapp_message_id=response.get("messages", [{}])[0].get("id")
-    )
-    created_message = crud.create_message(db, message=message_to_save, user_id=target_user.id)
+        response = whatsapp_client.send_text_message(to=target_user.whatsapp_id, text=text)
+        if not response:
+            abort(500, description="Failed to send message via WhatsApp API")
 
-    return created_message
+        message_to_save = schemas.MessageCreate(
+            content=text,
+            direction="outgoing",
+            message_type="text",
+            whatsapp_message_id=response.get("messages", [{}])[0].get("id")
+        )
+        created_message = crud.create_message(db, message=message_to_save, user_id=target_user.id)
+
+        # Manually serialize the created message for the response
+        message_data = {
+            "id": created_message.id,
+            "user_id": created_message.user_id,
+            "content": created_message.content,
+            "direction": created_message.direction,
+            "timestamp": created_message.timestamp.isoformat()
+        }
+        # Emit the new message to all connected dashboard clients
+        socketio.emit('new_message', message_data)
+
+        return jsonify(message_data), 201
+    finally:
+        db.close()

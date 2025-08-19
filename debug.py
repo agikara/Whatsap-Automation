@@ -10,7 +10,7 @@ load_dotenv()
 print("Starting debug script...")
 try:
     # We need to make sure all modules are imported to catch any errors
-    from app import models, security
+    from app import models, auth
     from app.routers import dashboard, webhook
     from app.database import Base, create_db_and_tables, engine
 

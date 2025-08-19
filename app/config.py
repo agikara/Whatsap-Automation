@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "password"
     DATABASE_URL: str = "sqlite:///./whatsapp_faq.db"
+    TERMS_AND_CONDITIONS_PDF_URL: str = "https://www.example.com/terms.pdf"
 
     class Config:
         # The settings will first try to load from a .env file if it exists,

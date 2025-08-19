@@ -47,3 +47,14 @@ def get_messages_by_user(db: Session, user_id: int):
     Retrieve all messages for a specific user, ordered by timestamp.
     """
     return db.query(models.Message).filter(models.Message.user_id == user_id).order_by(models.Message.timestamp.asc()).all()
+
+def update_user_policy_status(db: Session, user_id: int, status: bool):
+    """
+    Update the policy_accepted status for a user.
+    """
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user:
+        db_user.policy_accepted = status
+        db.commit()
+        db.refresh(db_user)
+    return db_user

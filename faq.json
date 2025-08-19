@@ -23,7 +23,8 @@
           "title": "What is this service?",
           "action": {
             "type": "reply",
-            "body": "This is an automated FAQ assistant to help you with your questions."
+            "body": "This is an automated FAQ assistant to help you with your questions. Here is a picture of our logo!",
+            "image_url": "https://i.imgur.com/sodus8P.png"
           }
         },
         {

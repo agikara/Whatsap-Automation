@@ -34,6 +34,7 @@ class UserCreate(UserBase):
 
 class UserSummary(UserBase):
     id: int
+    policy_accepted: bool
 
     class Config:
         from_attributes = True
@@ -41,6 +42,7 @@ class UserSummary(UserBase):
 class User(UserBase):
     id: int
     created_at: datetime
+    policy_accepted: bool
     messages: List[Message] = []
 
     class Config:

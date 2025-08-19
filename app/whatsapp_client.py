@@ -63,6 +63,30 @@ class WhatsAppClient:
         }
         return self._send_request(payload)
 
+    def send_document(self, to: str, url: str, caption: str):
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "document",
+            "document": {
+                "link": url,
+                "caption": caption
+            }
+        }
+        return self._send_request(payload)
+
+    def send_image_message(self, to: str, url: str, caption: str):
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "image",
+            "image": {
+                "link": url,
+                "caption": caption
+            }
+        }
+        return self._send_request(payload)
+
     def _send_request(self, payload: dict):
         try:
             response = requests.post(self.API_URL, json=payload, headers=self.HEADERS)

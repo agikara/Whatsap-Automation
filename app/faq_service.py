@@ -60,9 +60,16 @@ class FaqService:
     def execute_action(self, to: str, action: dict):
         action_type = action.get("type")
         body = action.get("body", "Sorry, something went wrong.")
+        image_url = action.get("image_url")
 
         if action_type == "reply":
-            whatsapp_client.send_text_message(to, body)
+            if image_url:
+                # If there's an image, send it with the text as a caption
+                whatsapp_client.send_image_message(to, url=image_url, caption=body)
+            else:
+                # Otherwise, just send the text
+                whatsapp_client.send_text_message(to, body)
+
         # TODO: Implement CTA actions if they are defined in faq.json
         # For now, just sending the text part.
         elif action_type in ["cta_call", "cta_url"]:
